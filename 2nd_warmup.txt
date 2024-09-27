@@ -1,0 +1,8 @@
+It would print "S S B";
+
+
+This is because obj.print() would call Subclass's print, meaning it would print "S "
+
+Then, obj.fun() would call Baseclass's fun command, which would then reference Subclass's print: also printing "S "
+
+Finally, system.out.print(obj.data) would call Baseclass's data variable then it would in turn print "B"

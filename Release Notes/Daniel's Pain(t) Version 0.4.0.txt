@@ -1,0 +1,34 @@
+Daniel's Pain(t) Version 0.3.0 -  09/06/2024
+
+New features:
+  
+  * Clear Canvas (with safety net)
+  
+  * Undo and Redo (identical from last week)
+
+  * Blank starting image
+  
+  * Added Pentagon and custom Polygon
+  
+  * Add Text
+
+Known issues:
+  
+  * Color Grabber is not properly operational
+  
+  * Select area does not work but has skeleton
+  
+  * Tabs are not implemented
+
+  * Git not implemented
+  
+Expected next sprint:
+
+  * Auto-save
+
+  * Webserver
+  
+  * Change file format
+
+Critique:
+  * Having a lot of problems with implementations, and as such code quality is not as high as it should be as I am in the middle of multiple implementations. Fully implemented code is of good quality but probably can be rearranged into more files sometime in the future. Hope to be fully caught up and implementing next week

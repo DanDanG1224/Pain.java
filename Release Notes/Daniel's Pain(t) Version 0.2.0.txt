@@ -1,0 +1,27 @@
+Daniel's Pain(t) Version 0.2.0 -  09/06/2024
+
+New features:
+
+  * support for jpg, png, jpeg, bmp
+
+  * OPERATING save function
+
+  * Ability to draw a line
+
+  * Ability to change width and color of said line
+
+  * Help menu with help and about sections
+
+  * Image size management
+
+
+Known issues:
+
+  * N/A
+
+
+Expected next sprint:
+
+  * Color Wheel
+
+  * Draw Line

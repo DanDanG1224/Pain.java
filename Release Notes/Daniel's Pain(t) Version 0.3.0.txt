@@ -1,0 +1,38 @@
+Daniel's Pain(t) Version 0.3.0 -  09/06/2024
+
+New features:
+  
+  * Label for colors (Editors Note: this was already incorporated last week with color select)  
+  
+  * Dashed function for BOTH lines and shapes
+
+  * Width function updated to display pixel count
+  
+  * Ability to add shapes (square, circle, rectangle, square, ellipse, triangle, and (bonus) star)
+  
+  * Keyboard Shortcuts!!! (Ctrl+S: save, Ctrl+Z: undo, Ctrl+Y: redo)
+  
+  * Auto canvas resize on right and bottom sides of canvas
+
+  * Line function updated to include straight line option
+
+  * Aware Save
+
+  * Java Pun
+  
+  * Eraser? (Not sure if eraser is supposed to be bonus as it is below the tabs and pun bonus, but white line works)
+
+
+Known issues:
+  
+  * Color Grabber is absent
+  
+Expected next sprint:
+
+  * Additional shape and custom regular polygon with any # of sides
+
+  * Select sections of the image (and move them)
+  
+  * Save tabs
+  
+  * Text insertion

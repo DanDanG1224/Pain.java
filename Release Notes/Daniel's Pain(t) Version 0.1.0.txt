@@ -1,0 +1,24 @@
+Daniel's Pain(t) Version 0.1.0 -  08/30/2024
+
+New features:
+
+  * menu
+
+  * add image function
+
+  * support for jpg, png, jpeg
+
+  * save function
+
+  * save as function
+
+
+Known issues:
+
+  * save function works but for some reason won't add image data
+
+Expected next sprint:
+
+  * Color Wheel
+
+  * Draw Line
