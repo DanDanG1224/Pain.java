@@ -1,0 +1,21 @@
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JUnit 5 for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+
+    // JavaFX if you're using it
+    implementation 'org.openjfx:javafx-controls:17'
+    implementation 'org.openjfx:javafx-graphics:17'
+}
+
+test {
+    useJUnitPlatform()  // Enable JUnit 5
+}

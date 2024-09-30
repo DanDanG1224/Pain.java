@@ -2,6 +2,7 @@ package com.example.Pain;
 
 // Imports
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
@@ -15,7 +16,8 @@ import javafx.scene.SnapshotParameters;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
-import javafx.scene.control.Label;
+
+import java.nio.file.Files;
 import java.util.HashMap;
 import javax.imageio.ImageIO;
 import java.awt.image.RenderedImage;
@@ -23,11 +25,23 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Optional;
-import java.util.Stack;
+import java.util.*;
+
+/**
+ * The Pain class is effectively the main command
+ * console of my Pain project; Scene setup,
+ * actions, and most of my declarations are
+ * within this field
+ */
 
 public class Pain extends Application {
 
     //Initial Declarations
+    private Timer autosaveTimer;
+    private final long AUTOSAVE = 60000;
+    private long countdown = AUTOSAVE / 1000;
+    private Label timerLabel;
+    private ToggleButton timerButton;
     private final HashMap<Tab, Canvas> canvasMap = new HashMap<>();
     private final HashMap<Tab, GraphicsContext> gcMap = new HashMap<>();
     private final ImageView imageView = new ImageView();
@@ -39,10 +53,10 @@ public class Pain extends Application {
     private String textInput;
     private boolean isSaved,isDashedLine = false;
     private WritableImage canvasSnapshot, selectSnapshot, copySnapshot;
-    ColorPicker colorPicker = new ColorPicker(Color.BLACK);
     private boolean isSelecting, selectedArea, isPasting = false;
     private double selectionStartX, selectionStartY, selectionEndX, selectionEndY;
     private TabPane tabPane;
+    private int tabCounter = 1;
 
     //Undo/Redo Stacks
     private final Stack<WritableImage> undoStack = new Stack<>();
@@ -51,12 +65,24 @@ public class Pain extends Application {
     private enum Tool { COPY_PASTE, FREE_DRAW, LINE, SQUARE, RECTANGLE, PENTAGON, CIRCLE, ELLIPSE, TRIANGLE, STAR, POLYGON, TEXTBOX}
     private Tool currentTool = Tool.FREE_DRAW;
 
+
+    /**
+     *
+     * @param primaryStage the primary stage for this application, onto which
+     * the application scene can be set. The primary stage will be embedded in
+     * the browser if the application was launched as an applet.
+     * Applications may create other stages, if needed, but they will not be
+     * primary stages and will not be embedded in the browser.
+     *
+     * Shout out IntelliJ for doing this one on its own; basically this is what
+     *                     everything is called within
+     */
     @Override
     public void start(Stage primaryStage) {
         BorderPane root = new BorderPane();
-        tabPane = new TabPane();
+        //tabPane = new TabPane();
         root.setCenter(canvas);
-
+        autosaveTimer = new Timer();
         MenuBar menuBar = new MenuBar();
 
         isSaved = false;
@@ -75,7 +101,6 @@ public class Pain extends Application {
         Menu toolsMenu = new Menu("Tools");
         MenuItem lineWidth = new MenuItem("Line Width");
         MenuItem pickColor = new MenuItem("Color Picker");
-        MenuItem straightLine = new MenuItem("Straight Line");
         MenuItem square = new MenuItem("Square");
         MenuItem rectangle = new MenuItem("Rectangle");
         MenuItem pentagon = new MenuItem("Pentagon");
@@ -88,7 +113,13 @@ public class Pain extends Application {
         MenuItem toggleDashedLine = new MenuItem("Toggle Dashed Line");
         MenuItem toggleLineType = new MenuItem("Toggle Free Draw / Straight Line");
         MenuItem copyPaste = new MenuItem("Select and Copy-Paste");
-        toolsMenu.getItems().addAll(copyPaste, lineWidth, pickColor, toggleLineType, toggleDashedLine, straightLine, square, rectangle, pentagon, circle, ellipse, triangle, star, polygon, textPrompt);
+        toolsMenu.getItems().addAll(copyPaste, lineWidth, pickColor, toggleLineType, toggleDashedLine, square, rectangle, pentagon, circle, ellipse, triangle, star, polygon, textPrompt);
+
+        /**
+         * The next several sets of lines establish actions to be
+         * taken whenever a tool is changed to or when the
+         * "action to set it" is taken
+         */
 
         toggleLineType.setOnAction(e -> {
             if (currentTool == Tool.FREE_DRAW) {
@@ -111,7 +142,6 @@ public class Pain extends Application {
             }
         });
 
-        straightLine.setOnAction(e -> currentTool = Tool.LINE);
         square.setOnAction(e -> currentTool = Tool.SQUARE);
         rectangle.setOnAction(e -> currentTool = Tool.RECTANGLE);
         pentagon.setOnAction(e -> currentTool = Tool.PENTAGON);
@@ -120,6 +150,7 @@ public class Pain extends Application {
         triangle.setOnAction(e -> currentTool = Tool.TRIANGLE);
         star.setOnAction(e -> currentTool = Tool.STAR);
         copyPaste.setOnAction(e -> currentTool = Tool.COPY_PASTE);
+
         polygon.setOnAction(e -> {
             TextInputDialog dialog = new TextInputDialog("10");
             dialog.setTitle("Polygon Sides");
@@ -128,6 +159,7 @@ public class Pain extends Application {
             result.ifPresent(sides -> sideCount = Integer.parseInt(sides));
             currentTool = Tool.POLYGON;
         });
+
         textPrompt.setOnAction(e -> {
             TextInputDialog dialog = new TextInputDialog("");
             dialog.setTitle("Text Input");
@@ -151,6 +183,18 @@ public class Pain extends Application {
         VBox topContainer = new VBox(menuBar);
         root.setTop(topContainer);
 
+        // Timer setup
+        timerLabel = new Label("Autosave in: " + countdown + "s");
+        timerButton = new ToggleButton("Show Autosave Timer");
+        VBox timerBox = new VBox(timerLabel, timerButton);
+        root.setRight(timerBox);
+        timerLabel.setVisible(false);
+        setupCountdown();
+
+        // Timer Button setup
+        timerButton.setOnAction(e -> {
+            timerLabel.setVisible(timerButton.isSelected());
+        });
 
         // Set initial drawing settings
         gc.setStroke(Color.BLACK);
@@ -170,6 +214,11 @@ public class Pain extends Application {
         help.setOnAction(e -> showHelpDialog(primaryStage));
         about.setOnAction(e -> showAboutDialog(primaryStage));
         javaPun.setOnAction(e -> showPunDialog(primaryStage));
+
+        /**
+         * The next section contains all the mouse interaction
+         * code including, clicking, dragging, and releasing
+         */
 
         // Set up drawing events
         canvas.addEventHandler(MouseEvent.MOUSE_PRESSED, e -> {
@@ -210,18 +259,18 @@ public class Pain extends Application {
 
             switch (currentTool) {
                 case LINE:
-                    if (currentTool == Tool.LINE) {
-                        gc.strokeLine(startX, startY, endX, endY);  // Draw a straight line
-                    } else if (currentTool == Tool.FREE_DRAW) {
-                        gc.lineTo(endX, endY);  // Draw freehand line
-                        gc.stroke();  // Continue drawing as mouse moves
-                    }
+                    gc.strokeLine(startX, startY, endX, endY);  // Draw a straight line
+                    gc.lineTo(endX, endY);  // Draw freehand line
+                    gc.stroke();  // Continue drawing as mouse moves
                     break;
                 case COPY_PASTE:
-                    double rectX = Math.min(selectionStartX, endX);
-                    double rectY = Math.min(selectionStartY, endY);
-                    double rectWidth = Math.abs(selectionStartX - endX);
-                    double rectHeight = Math.abs(selectionStartY - endY);
+                    selectionEndX = endX;
+                    selectionEndY = endY;
+
+                    double rectX = Math.min(selectionStartX, selectionEndX);
+                    double rectY = Math.min(selectionStartY, selectionEndY);
+                    double rectWidth = Math.abs(selectionStartX - selectionEndX);
+                    double rectHeight = Math.abs(selectionStartY - selectionEndY);
 
                     gc.setStroke(Color.RED);  // Red border to visualize selection
                     gc.strokeRect(rectX, rectY, rectWidth, rectHeight);
@@ -270,25 +319,25 @@ public class Pain extends Application {
             // Draw the final shape when mouse is released
             switch (currentTool) {
                 case COPY_PASTE:
+                    selectionEndX = endX;
+                    selectionEndY = endY;
+
                     SnapshotParameters params = new SnapshotParameters();
-                    double rectX = Math.min(selectionStartX, endX);
-                    double rectY = Math.min(selectionStartY, endY);
-                    double rectWidth = Math.abs(selectionStartX - endX);
-                    double rectHeight = Math.abs(selectionStartY - endY);
+                    double rectX = Math.min(selectionStartX, selectionEndX);
+                    double rectY = Math.min(selectionStartY, selectionEndY);
+                    double rectWidth = Math.abs(selectionStartX - selectionEndX);
+                    double rectHeight = Math.abs(selectionStartY - selectionEndY);
 
                     params.setViewport(new Rectangle2D(rectX, rectY, rectWidth, rectHeight));  // Set selection viewport
-
                     selectSnapshot = new WritableImage((int) rectWidth, (int) rectHeight);
                     canvas.snapshot(params, selectSnapshot);  // Take snapshot of selected area
                     selectedArea = true;
+                    isSelecting = false;
                     break;
                 case LINE:
-                    if (currentTool == Tool.LINE) {
                         gc.strokeLine(startX, startY, endX, endY);  // Draw final straight line
-                    } else if (currentTool == Tool.FREE_DRAW) {
                         gc.lineTo(endX, endY);  // Final free draw line
                         gc.stroke();  // Finish the freehand drawing
-                    }
                     break;
                 case SQUARE:
                     drawSquare(startX, startY, endX, endY);
@@ -324,31 +373,10 @@ public class Pain extends Application {
             isSaved = false;  // Mark the drawing as unsaved
         });
 
-
-        // Scene Initialization
-        Scene scene = new Scene(root, 1600, 900);
-
-        scene.setOnKeyPressed(event -> {
-            if (new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN).match(event)) {
-                saveImage();
-            } else if (new KeyCodeCombination(KeyCode.Z, KeyCombination.CONTROL_DOWN).match(event)) {
-                undoAction();
-            } else if (new KeyCodeCombination(KeyCode.Y, KeyCombination.CONTROL_DOWN).match(event)) {
-                redoAction();
-            }
-            /*
-            else if (new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN).match(event)) {
-                copyAction();
-            } else if (new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN).match(event)) {
-                pasteAction();
-            }
-            */
-        });
-
-        primaryStage.setTitle("Pain");
-        primaryStage.setScene(scene);
-
-        // Add close confirmation if unsaved changes exist
+        /**
+         * This section handles ensuring that there is confirmation when
+         * the user attempts to close their unsaved work
+         */
         primaryStage.setOnCloseRequest(event -> {
             if (!isSaved) {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
@@ -368,12 +396,44 @@ public class Pain extends Application {
                     }
                 });
             }
+            if (autosaveTimer != null) {
+                autosaveTimer.cancel();
+            }
         });
+
+        setupCountdown();
+
+        // Scene Initialization
+        Scene scene = new Scene(root, 1600, 900);
+
+        /**
+         * This section controls keyboard shortcuts
+         */
+
+        scene.setOnKeyPressed(event -> {
+            if (new KeyCodeCombination(KeyCode.S, KeyCombination.CONTROL_DOWN).match(event)) {
+                saveImage();
+            } else if (new KeyCodeCombination(KeyCode.Z, KeyCombination.CONTROL_DOWN).match(event)) {
+                undoAction();
+            } else if (new KeyCodeCombination(KeyCode.Y, KeyCombination.CONTROL_DOWN).match(event)) {
+                redoAction();
+            } else if (new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN).match(event)) {
+                copyAction();
+            } else if (new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN).match(event)) {
+                pasteAction();
+            }
+        });
+
+        primaryStage.setTitle("Pain");
+        primaryStage.setScene(scene);
 
         primaryStage.show();
     }
 
-    // Image Insertion
+    /**
+     * Image Insertion
+     * @param stage
+     */
     private void insertImage(Stage stage) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.getExtensionFilters().addAll(
@@ -381,8 +441,9 @@ public class Pain extends Application {
         );
         File file = fileChooser.showOpenDialog(stage);
         if (file != null) {
+            currentFile = file;
             try {
-                Image image = new Image(new FileInputStream(file));
+                Image image = new Image(Files.newInputStream(file.toPath()));
 
                 // Adjust canvas size if image is larger
                 double imageWidth = image.getWidth();
@@ -401,6 +462,12 @@ public class Pain extends Application {
         }
     }
 
+    /**
+     * This section handles automatic resize of the canvas
+     * when the user draws off the side of the screen
+     * @param newWidth
+     * @param newHeight
+     */
     private void checkAndResizeCanvas(double newWidth, double newHeight) {
         double currentWidth = canvas.getWidth();
         double currentHeight = canvas.getHeight();
@@ -421,7 +488,11 @@ public class Pain extends Application {
         }
     }
 
-    // Clear Canvas Function
+    /**
+     * This section handles clearing the canvas when
+     * the clear canvas button is interacted with
+     * @param owner
+     */
     private void clearCanvas(Stage owner) {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.initOwner(owner);
@@ -442,7 +513,9 @@ public class Pain extends Application {
         });
     }
 
-    // Save Function
+    /**
+     * This section handles the Save function
+     */
     private void saveImage() {
         if (currentFile != null) {
             saveToFile(currentFile);
@@ -450,9 +523,13 @@ public class Pain extends Application {
             saveImageAs(null);
         }
         isSaved = true;
+        countdown = AUTOSAVE / 1000;
     }
 
-    // Save As Function
+    /**
+     * This section handles the SaveAs function
+     *      Note: not the same as the save function, though it is called
+     */
     private void saveImageAs(Stage stage) {
         FileChooser fileChooser = new FileChooser();
         fileChooser.getExtensionFilters().addAll(
@@ -462,13 +539,30 @@ public class Pain extends Application {
         );
         File file = fileChooser.showSaveDialog(stage);
         if (file != null) {
+            if (currentFile != null) {
+                String currentFormat = getFileExtension(currentFile.getName());
+                String newFormat = getFileExtension(file.getName());
+
+                // If formats are different, warn the user
+                if (!currentFormat.equalsIgnoreCase(newFormat)) {
+                    boolean confirmed = showFormatWarning(currentFormat, newFormat);
+                    if (!confirmed) {
+                        System.out.println("Save canceled due to format change.");
+                        return;  // User canceled save
+                    }
+                }
+            }
             saveToFile(file);
             currentFile = file;
             isSaved = true;
         }
     }
 
-    // Save Background Function
+    /**
+     * This section handles the actual writing of the image
+     * to the file format and saving bit data
+     * @param file
+     */
     private void saveToFile(File file) {
         try {
             String format = getFileExtension(file.getName());
@@ -478,18 +572,30 @@ public class Pain extends Application {
             }
             RenderedImage renderedImage = SwingFXUtils.fromFXImage(canvas.snapshot(null, null), null);
             ImageIO.write(renderedImage, format, file);
+            countdown = AUTOSAVE / 1000;
         } catch (IOException ex) {
             ex.printStackTrace();
         }
     }
 
-    // Extension Retrieval
+    /**
+     * This section gets the file format based on the file's name
+     * @param fileName
+     * @return
+     */
     private String getFileExtension(String fileName) {
         int dotIndex = fileName.lastIndexOf('.');
-        return (dotIndex == -1) ? null : fileName.substring(dotIndex + 1);
+        if (dotIndex > 0 && dotIndex < fileName.length() - 1) {
+            return fileName.substring(dotIndex + 1);
+        } else {
+            return null;
+        }
     }
 
-    // Dialog to adjust line width
+    /**
+     * This section displays the dialog for line width
+     * @param owner
+     */
     private void showLineWidthDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initOwner(owner);
@@ -517,7 +623,10 @@ public class Pain extends Application {
         dialog.show();
     }
 
-    // Dialog to select line color
+    /**
+     * This section handles the color picker dialog
+     * @param owner
+     */
     private void showColorPickerDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initOwner(owner);
@@ -532,7 +641,9 @@ public class Pain extends Application {
         dialog.show();
     }
 
-    // Undo the last action
+    /**
+     * This section handles the undo action shortcut
+     */
     private void undoAction() {
         if (!undoStack.isEmpty()) {
             // Save the current state to the redo stack before undoing
@@ -549,8 +660,9 @@ public class Pain extends Application {
     }
 
     /**
-
-     private void copyAction() {
+     * This section handles the copy action shortcut
+     */
+    private void copyAction() {
         if (selectedArea) {
             // Assign the selected snapshot to copySnapshot
             copySnapshot = new WritableImage(selectSnapshot.getPixelReader(),
@@ -560,7 +672,9 @@ public class Pain extends Application {
         }
     }
 
-
+    /**
+     * This section handles the paste action shortcut
+     */
     private void pasteAction() {
         if (copySnapshot != null) {
             isPasting = true;  // Activate pasting mode
@@ -576,9 +690,9 @@ public class Pain extends Application {
         }
     }
 
-    **/
-    
-    // Redo the last undone action
+    /**
+     * This section handles the redo action shortcut
+     */
     private void redoAction() {
         if (!redoStack.isEmpty()) {
             // Save the current state to the undo stack before redoing
@@ -594,16 +708,39 @@ public class Pain extends Application {
         }
     }
 
-
+    /**
+     * This section handles the construction of a square
+     * when the user interacts with the square button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawSquare(double startX, double startY, double endX, double endY) {
         double side = Math.min(Math.abs(endX - startX), Math.abs(endY - startY));
         gc.strokeRect(startX, startY, side, side);
     }
 
+    /**
+     * This section handles the construction of a rectangle
+     * when the user interacts with the rectangle button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawRectangle(double startX, double startY, double endX, double endY) {
         gc.strokeRect(startX, startY, Math.abs(endX - startX), Math.abs(endY - startY));
     }
 
+    /**
+     * This section handles the construction of a pentagon
+     * when the user interacts with the pentagon button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawPentagon(double startX, double startY, double endX, double endY) {
         double radius = Math.min(Math.abs(endX - startX), Math.abs(endY - startY)) / 2;
         double centerX = (startX + endX) / 2;
@@ -621,20 +758,52 @@ public class Pain extends Application {
         gc.strokePolygon(xPoints, yPoints, 5);
     }
 
+    /**
+     * This section handles the construction of a circle
+     * when the user interacts with the circle button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawCircle(double startX, double startY, double endX, double endY) {
         double radius = Math.min(Math.abs(endX - startX), Math.abs(endY - startY)) / 2;
         gc.strokeOval(startX - radius, startY - radius, radius * 2, radius * 2);
     }
 
+    /**
+     * This section handles the construction of an ellipse
+     * when the user interacts with the ellipse button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawEllipse(double startX, double startY, double endX, double endY) {
         gc.strokeOval(startX, startY, Math.abs(endX - startX), Math.abs(endY - startY));
     }
 
+    /**
+     * This section handles the construction of a triangle
+     * when the user interacts with the triangle button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawTriangle(double startX, double startY, double endX, double endY) {
         double midX = (startX + endX) / 2;
         gc.strokePolygon(new double[]{startX, endX, midX}, new double[]{endY, endY, startY}, 3);
     }
 
+    /**
+     * This section handles the construction of a star
+     * when the user interacts with the star button
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     */
     private void drawStar(double startX, double startY, double endX, double endY) {
         double radius = Math.min(Math.abs(endX - startX), Math.abs(endY - startY)) / 2;
         double centerX = (startX + endX) / 2;
@@ -653,6 +822,16 @@ public class Pain extends Application {
         gc.strokePolygon(xPoints, yPoints, 10);
     }
 
+    /**
+     * This section handles the construction of a polygon
+     * when the user interacts with the polygon button
+     * and chooses how many sides they want it to have
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
+     * @param sides
+     */
     private void drawPolygon(double startX, double startY, double endX, double endY, int sides) {
         double radius = Math.min(Math.abs(endX - startX), Math.abs(endY - startY)) / 2;
         double centerX = (startX + endX) / 2;
@@ -670,18 +849,30 @@ public class Pain extends Application {
         gc.strokePolygon(xPoints, yPoints, sides);
     }
 
+    /**
+     * This section handles the display of text boxes
+     * @param startX
+     * @param startY
+     * @param textDisplay
+     */
     private void drawText(double startX, double startY, String textDisplay) {
         gc.strokeText(textDisplay, startX, startY);
     }
 
-    // Save the current canvas state for undo/redo
+    /**
+     * This section handles the saving of the canvas for
+     * while dragging a shape and undo/redo functions
+     */
     private void saveCanvasState() {
         WritableImage snapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
         canvas.snapshot(null, snapshot);
         undoStack.push(snapshot);
     }
 
-    // Dialog to show "About" information
+    /**
+     * Dialog to show "About" information
+     * @param owner
+     */
     private void showAboutDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initOwner(owner);
@@ -694,7 +885,10 @@ public class Pain extends Application {
         dialog.show();
     }
 
-    // Dialog to show "Pun" information
+    /**
+     * Dialog to show "Pun" information
+     * @param owner
+     */
     private void showPunDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initOwner(owner);
@@ -707,7 +901,10 @@ public class Pain extends Application {
         dialog.show();
     }
 
-    // Dialog to show "Help" information
+    /**
+     * Dialog to show "Help" information
+     * @param owner
+     */
     private void showHelpDialog(Stage owner) {
         Stage dialog = new Stage();
         dialog.initOwner(owner);
@@ -718,6 +915,46 @@ public class Pain extends Application {
         Scene scene = new Scene(helpLabel, 300, 100);
         dialog.setScene(scene);
         dialog.show();
+    }
+
+    /**
+     * Shows a warning dialog if the user is attempting to save the file in a different format.
+     *
+     * @param currentFormat
+     * @param newFormat
+     * @return
+     */
+    private boolean showFormatWarning(String currentFormat, String newFormat) {
+        Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+        alert.setTitle("File Format Warning");
+        alert.setHeaderText("You are saving in a different format.");
+        alert.setContentText("The current format is: ." + currentFormat + "\nYou are trying to save as: ." + newFormat +
+                "\nThis may cause loss of quality or data.\nDo you want to proceed?");
+
+        // Display the warning and wait for the user's response
+        Optional<ButtonType> result = alert.showAndWait();
+        return result.isPresent() && result.get() == ButtonType.OK;
+    }
+
+    /**
+     * Dialog to show and implement autosave function
+     */
+    private void setupCountdown() {
+        autosaveTimer.scheduleAtFixedRate(new TimerTask() {
+            public void run() {
+                Platform.runLater(() -> {
+                    countdown--;
+                    timerLabel.setText("Autosave in: " + countdown + "s");
+
+                    if (countdown <= 0) {
+                        if (currentFile != null) {
+                            saveImage();
+                        }
+                        countdown = AUTOSAVE / 1000;
+                    }
+                });
+            }
+        }, 1000, 1000);
     }
 
     public static void main(String[] args) {
