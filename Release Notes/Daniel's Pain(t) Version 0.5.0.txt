@@ -1,0 +1,28 @@
+Daniel's Pain(t) Version 0.5.0 -  09/30/2024
+
+New features:
+  
+  * Github
+
+  * 3 Unit Tests
+
+  * Autosave function with choice for countdown visibility AND reset on user save
+
+  * JavaDoc Commenting throughout
+
+  * Saving in alternate format w/ warnings
+
+Known issues:
+  
+  * Select area does not work, but has skeleton; still in progress
+  
+  * Tabs are not implemented but tabPane beginnings are in place
+
+  * Webserver is not working (unsure of implementation plans?)
+  
+Expected next sprint:
+
+  * No idea, but honestly this is kinda fun (omitting of the stress of deadlines, of course)
+
+GitHub:
+  * https://github.com/DanDanG1224/Pain.java

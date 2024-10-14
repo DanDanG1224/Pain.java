@@ -1,0 +1,28 @@
+Daniel's Pain(t) Version 0.6.0 -  10/13/2024
+
+New features:
+  
+  * Canvas Rotation
+
+  * Drawing Icons
+
+  * Tooltips for buttons
+
+  * Variable Pointed Star
+
+  * Threaded file events
+
+Known issues:
+  
+  * Select area, along with copy and paste does not work, but has skeleton
+  
+  * Tabs are not implemented but tabPane beginnings are in place
+
+  * Webserver is not working (unsure of implementation plans?)
+  
+Expected next sprint:
+
+  * None!
+
+GitHub:
+  * https://github.com/DanDanG1224/Pain.java

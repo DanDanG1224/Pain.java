@@ -1,8 +1,7 @@
 package com.example.Pain;
 
 // Imports
-import javafx.application.Application;
-import javafx.application.Platform;
+import javafx.application.*;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
@@ -15,17 +14,20 @@ import javafx.scene.paint.Color;
 import javafx.scene.SnapshotParameters;
 import javafx.stage.FileChooser;
 import javafx.stage.Modality;
-import javafx.stage.Stage;
+import javafx.stage.*;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.nio.file.Files;
 import java.util.HashMap;
 import javax.imageio.ImageIO;
 import java.awt.image.RenderedImage;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.logging.*;
 
 /**
  * The Pain class is effectively the main command
@@ -49,20 +51,45 @@ public class Pain extends Application {
     private final Canvas canvas = new Canvas(1200, 800);
     private final GraphicsContext gc = canvas.getGraphicsContext2D();
     private double startX, startY, endX, endY;
-    private int sideCount;
+    private int sideCount, pointCount;
     private String textInput;
     private boolean isSaved,isDashedLine = false;
     private WritableImage canvasSnapshot, selectSnapshot, copySnapshot;
     private boolean isSelecting, selectedArea, isPasting = false;
     private double selectionStartX, selectionStartY, selectionEndX, selectionEndY;
     private TabPane tabPane;
-    private int tabCounter = 1;
+    //private int tabCounter = 1;
 
     //Undo/Redo Stacks
     private final Stack<WritableImage> undoStack = new Stack<>();
     private final Stack<WritableImage> redoStack = new Stack<>();
 
-    private enum Tool { COPY_PASTE, FREE_DRAW, LINE, SQUARE, RECTANGLE, PENTAGON, CIRCLE, ELLIPSE, TRIANGLE, STAR, POLYGON, TEXTBOX}
+    //Thread Setup
+    private static BlockingQueue<String> logQueue = new LinkedBlockingQueue<>();
+    private static Logger logger = Logger.getLogger("Paint Thread Log");
+
+    static {
+        try {
+            FileHandler fileHandler = new FileHandler("paint_log.txt", true);
+            fileHandler.setFormatter(new SimpleFormatter());
+            logger.addHandler(fileHandler);
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to set up text file", e);
+        }
+    }
+    // Start the logging thread
+    static Thread loggingThread = new Thread(new LoggerTask());
+
+    static {
+        try {
+            loggingThread.start();
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Failed to set up logger", e);
+        }
+    }
+
+    @SuppressWarnings("SpellCheckingInspection")
+    private enum Tool { COPY_PASTE, FREE_DRAW, LINE, SQUARE, RECTANGLE, PENTAGON, CIRCLE, ELLIPSE, TRIANGLE, STAR, CUSTOMSTAR, POLYGON, TEXTBOX}
     private Tool currentTool = Tool.FREE_DRAW;
 
 
@@ -73,7 +100,7 @@ public class Pain extends Application {
      * the browser if the application was launched as an applet.
      * Applications may create other stages, if needed, but they will not be
      * primary stages and will not be embedded in the browser.
-     *
+     * ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
      * Shout out IntelliJ for doing this one on its own; basically this is what
      *                     everything is called within
      */
@@ -91,41 +118,251 @@ public class Pain extends Application {
 
         // File Menu
         Menu fileMenu = new Menu("File");
-        MenuItem insertImage = new MenuItem("Insert Image");
-        MenuItem save = new MenuItem("Save");
-        MenuItem saveAs = new MenuItem("Save As");
-        MenuItem clearCanvas = new MenuItem("Clear Canvas");
-        fileMenu.getItems().addAll(insertImage, save, saveAs, clearCanvas);
+        Label insertImageLabel = new Label("Insert Image");
+        Tooltip insertImageTooltip = new Tooltip("Click to insert an image");
+        Tooltip.install(insertImageLabel, insertImageTooltip);
+        CustomMenuItem insertImage = new CustomMenuItem(insertImageLabel);
+        Label saveLabel = new Label("Save");
+        Tooltip saveTooltip = new Tooltip("Click to save the same way as before");
+        Tooltip.install(saveLabel, saveTooltip);
+        CustomMenuItem save = new CustomMenuItem(saveLabel);
+        Label saveAsLabel = new Label("Save As");
+        Tooltip saveAsTooltip = new Tooltip("Click to save in a different way than before");
+        Tooltip.install(saveAsLabel, saveAsTooltip);
+        CustomMenuItem saveAs = new CustomMenuItem(saveAsLabel);
+        Label rotateLabel = new Label("Rotate 90 Degrees");
+        Tooltip rotateTooltip = new Tooltip("Click to rotate canvas 90 Degrees");
+        Tooltip.install(rotateLabel, rotateTooltip);
+        CustomMenuItem rotate = new CustomMenuItem();
+        Label mirrorHLabel = new Label("mirrorH");
+        Tooltip mirrorHTooltip = new Tooltip("Click to flip canvas horizontally over its origin");
+        Tooltip.install(mirrorHLabel, mirrorHTooltip);
+        CustomMenuItem mirrorHorizontally = new CustomMenuItem(mirrorHLabel);
+        Label mirrorVLabel = new Label("mirrorV");
+        Tooltip mirrorVTooltip = new Tooltip("Click to flip canvas vertically over its origin");
+        Tooltip.install(mirrorVLabel, mirrorVTooltip);
+        CustomMenuItem mirrorVertically = new CustomMenuItem(mirrorVLabel);
+        Label clearCanvasLabel = new Label("clearCanvas");
+        Tooltip clearCanvasTooltip = new Tooltip("Click to erase everything on your canvas");
+        Tooltip.install(clearCanvasLabel, clearCanvasTooltip);
+        CustomMenuItem clearCanvas = new CustomMenuItem(clearCanvasLabel);
+        fileMenu.getItems().addAll(insertImage, save, saveAs, rotate, mirrorHorizontally, mirrorVertically, clearCanvas);
 
         // Tools Menu
         Menu toolsMenu = new Menu("Tools");
-        MenuItem lineWidth = new MenuItem("Line Width");
-        MenuItem pickColor = new MenuItem("Color Picker");
-        MenuItem square = new MenuItem("Square");
-        MenuItem rectangle = new MenuItem("Rectangle");
-        MenuItem pentagon = new MenuItem("Pentagon");
-        MenuItem circle = new MenuItem("Circle");
-        MenuItem ellipse = new MenuItem("Ellipse");
-        MenuItem triangle = new MenuItem("Triangle");
-        MenuItem star = new MenuItem("Star");
-        MenuItem polygon = new MenuItem("Custom Polygon");
-        MenuItem textPrompt = new MenuItem("Add Text");
-        MenuItem toggleDashedLine = new MenuItem("Toggle Dashed Line");
-        MenuItem toggleLineType = new MenuItem("Toggle Free Draw / Straight Line");
-        MenuItem copyPaste = new MenuItem("Select and Copy-Paste");
-        toolsMenu.getItems().addAll(copyPaste, lineWidth, pickColor, toggleLineType, toggleDashedLine, square, rectangle, pentagon, circle, ellipse, triangle, star, polygon, textPrompt);
+        Label lineWidthLabel = new Label("Line Width");
+        try {
+            ImageView lineWidthIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\lineWidthImage.png")));
+            lineWidthIcon.setFitHeight(50);
+            lineWidthIcon.setFitWidth(50);
+            lineWidthLabel.setGraphic(lineWidthIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip lineWidthTooltip = new Tooltip("Change width of drawn lines or shape outlines");
+        Tooltip.install(lineWidthLabel, lineWidthTooltip);
+        CustomMenuItem lineWidth = new CustomMenuItem(lineWidthLabel);
 
-        /**
-         * The next several sets of lines establish actions to be
-         * taken whenever a tool is changed to or when the
-         * "action to set it" is taken
+        Label colorPickerLabel = new Label("Color Picker");
+        try {
+            ImageView colorPickerIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\colorPickerImage.png")));
+            colorPickerIcon.setFitHeight(50);
+            colorPickerIcon.setFitWidth(50);
+            colorPickerLabel.setGraphic(colorPickerIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip colorPickerTooltip = new Tooltip("Change color of lines and shapes drawn");
+        Tooltip.install(colorPickerLabel, colorPickerTooltip);
+        CustomMenuItem pickColor = new CustomMenuItem(colorPickerLabel);
+
+        Label squareLabel = new Label("Square");
+        try {
+            ImageView squareIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\squareImage.png")));
+            squareIcon.setFitHeight(50);
+            squareIcon.setFitWidth(50);
+            squareLabel.setGraphic(squareIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip squareTooltip = new Tooltip("Drag to draw a Square");
+        Tooltip.install(squareLabel, squareTooltip);
+        CustomMenuItem square = new CustomMenuItem(squareLabel);
+
+        Label rectangleLabel = new Label("Rectangle");
+        try {
+            ImageView rectangleIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\rectangleImage.png")));
+            rectangleIcon.setFitHeight(50);
+            rectangleIcon.setFitWidth(50);
+            rectangleLabel.setGraphic(rectangleIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip rectangleTooltip = new Tooltip("Drag to draw a Rectangle");
+        Tooltip.install(rectangleLabel, rectangleTooltip);
+        CustomMenuItem rectangle = new CustomMenuItem(rectangleLabel);
+
+        Label pentagonLabel = new Label("Pentagon");
+        try {
+            ImageView pentagonIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\pentagonImage.png")));
+            pentagonIcon.setFitHeight(50);
+            pentagonIcon.setFitWidth(50);
+            pentagonLabel.setGraphic(pentagonIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip pentagonTooltip = new Tooltip("Drag to draw a Pentagon");
+        Tooltip.install(pentagonLabel, pentagonTooltip);
+        CustomMenuItem pentagon = new CustomMenuItem(pentagonLabel);
+
+        Label circleLabel = new Label("Circle");
+        try {
+            ImageView circleIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\circleImage.png")));
+            circleIcon.setFitHeight(50);
+            circleIcon.setFitWidth(50);
+            circleLabel.setGraphic(circleIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip circleTooltip = new Tooltip("Drag to draw a Circle");
+        Tooltip.install(circleLabel, circleTooltip);
+        CustomMenuItem circle = new CustomMenuItem(circleLabel);
+
+        Label ellipseLabel = new Label("Ellipse");
+        try {
+            ImageView ellipseIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\ellipseImage.png")));
+            ellipseIcon.setFitHeight(50);
+            ellipseIcon.setFitWidth(50);
+            ellipseLabel.setGraphic(ellipseIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip ellipseTooltip = new Tooltip("Drag to draw an Ellipse");
+        Tooltip.install(ellipseLabel, ellipseTooltip);
+        CustomMenuItem ellipse = new CustomMenuItem(ellipseLabel);
+
+        Label triangleLabel = new Label("Triangle");
+        try {
+            ImageView triangleIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\triangleImage.png")));
+            triangleIcon.setFitHeight(50);
+            triangleIcon.setFitWidth(50);
+            triangleLabel.setGraphic(triangleIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip triangleTooltip = new Tooltip("Drag to draw a Triangle");
+        Tooltip.install(triangleLabel, triangleTooltip);
+        CustomMenuItem triangle = new CustomMenuItem(triangleLabel);
+
+        Label starLabel = new Label("Star");
+        try {
+            ImageView starIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\starImage.png")));
+            starIcon.setFitHeight(50);
+            starIcon.setFitWidth(50);
+            starLabel.setGraphic(starIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip starTooltip = new Tooltip("Drag to draw a 5-pointed Star");
+        Tooltip.install(starLabel, starTooltip);
+        CustomMenuItem star = new CustomMenuItem(starLabel);
+
+        Label starCustomLabel = new Label("Custom Star");
+        try {
+            ImageView starCustomIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\starCustomImage.png")));
+            starCustomIcon.setFitHeight(50);
+            starCustomIcon.setFitWidth(50);
+            starCustomLabel.setGraphic(starCustomIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip starCustomTooltip = new Tooltip("Drag to draw a Star with a custom number of points");
+        Tooltip.install(starCustomLabel, starCustomTooltip);
+        CustomMenuItem starCustom = new CustomMenuItem(starCustomLabel);
+
+        Label polygonLabel = new Label("Custom Polygon");
+        try {
+            ImageView polygonIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\polygonImage.png")));
+            polygonIcon.setFitHeight(50);
+            polygonIcon.setFitWidth(50);
+            polygonLabel.setGraphic(polygonIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip polygonTooltip = new Tooltip("Drag to draw a Polygon with a custom number of sides");
+        Tooltip.install(polygonLabel, polygonTooltip);
+        CustomMenuItem polygon = new CustomMenuItem(polygonLabel);
+
+        Label textPromptLabel = new Label("Add Text");
+        try {
+            ImageView textPromptIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\textPromptImage.png")));
+            textPromptIcon.setFitHeight(50);
+            textPromptIcon.setFitWidth(50);
+            textPromptLabel.setGraphic(textPromptIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip textPromptTooltip = new Tooltip("Click to add a textbox");
+        Tooltip.install(textPromptLabel, textPromptTooltip);
+        CustomMenuItem textPrompt = new CustomMenuItem(textPromptLabel);
+
+        Label toggleDashedLineLabel = new Label("Toggle Dashed Line");
+        try {
+            ImageView toggleDashedLineIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\dashedLineImage.png")));
+            toggleDashedLineIcon.setFitHeight(50);
+            toggleDashedLineIcon.setFitWidth(50);
+            toggleDashedLineLabel.setGraphic(toggleDashedLineIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip toggleDashedLineTooltip = new Tooltip("Click to change between a solid and dashed line");
+        Tooltip.install(toggleDashedLineLabel, toggleDashedLineTooltip);
+        CustomMenuItem toggleDashedLine = new CustomMenuItem(toggleDashedLineLabel);
+
+        Label toggleLineTypeLabel = new Label("Toggle Free Draw/Straight Line");
+        try {
+            ImageView toggleLineTypeIcon = new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\lineTypeImage.png")));
+            toggleLineTypeIcon.setFitHeight(50);
+            toggleLineTypeIcon.setFitWidth(50);
+            toggleLineTypeLabel.setGraphic(toggleLineTypeIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip toggleLineTypeTooltip = new Tooltip("Click to change between drawing a straight line and a scribbled line");
+        Tooltip.install(toggleLineTypeLabel, toggleLineTypeTooltip);
+        CustomMenuItem toggleLineType = new CustomMenuItem(toggleLineTypeLabel);
+
+        /*
+        Label selectAreaLabel = new Label("Select Area");
+        try {
+            squareLabel.setGraphic(new ImageView(new Image(new FileInputStream("C:\\CS250\\CS_Scary\\buttonImages\\squareImage.png"))));
+            squareIcon.setFitHeight(50);
+            squareIcon.setFitWidth(50);
+            squareLabel.setGraphic(squareIcon);
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+        Tooltip selectAreaTooltip = new Tooltip("Select an area (useful for copy/paste and rotate custom area)");
+        Tooltip.install(selectAreaLabel, selectAreaTooltip);
+        CustomMenuItem selectArea = new CustomMenuItem(selectAreaLabel);
+         */
+
+        // selectArea has been removed
+        toolsMenu.getItems().addAll(lineWidth, pickColor, toggleLineType, toggleDashedLine, square, rectangle, pentagon, circle, ellipse, triangle, star, starCustom, polygon, textPrompt);
+
+        /*
+          The next several sets of lines establish actions to be
+          taken whenever a tool is changed to or when the
+          "action to set it" is taken
          */
 
         toggleLineType.setOnAction(e -> {
             if (currentTool == Tool.FREE_DRAW) {
+                log("Tool selected: Straight Line");
                 currentTool = Tool.LINE; // Switch to Straight Line
                 toggleLineType.setText("Straight Line (Click to switch to Free Draw)");
             } else {
+                log("Tool selected: Free Draw");
                 currentTool = Tool.FREE_DRAW; // Switch to Free Draw
                 toggleLineType.setText("Free Draw (Click to switch to Straight Line)");
             }
@@ -133,25 +370,63 @@ public class Pain extends Application {
 
         toggleDashedLine.setOnAction(e -> {
             isDashedLine = !isDashedLine;  // Toggle the state
-
             // Set the line style based on the state
             if (isDashedLine) {
+                log("Tool selected: Dashed Line");
                 gc.setLineDashes(10);  // Create dashed lines (10 units of dash length)
             } else {
+                log("Tool selected: No Dashed Line");
                 gc.setLineDashes(0);  // Reset to solid lines
             }
         });
 
-        square.setOnAction(e -> currentTool = Tool.SQUARE);
-        rectangle.setOnAction(e -> currentTool = Tool.RECTANGLE);
-        pentagon.setOnAction(e -> currentTool = Tool.PENTAGON);
-        circle.setOnAction(e -> currentTool = Tool.CIRCLE);
-        ellipse.setOnAction(e -> currentTool = Tool.ELLIPSE);
-        triangle.setOnAction(e -> currentTool = Tool.TRIANGLE);
-        star.setOnAction(e -> currentTool = Tool.STAR);
-        copyPaste.setOnAction(e -> currentTool = Tool.COPY_PASTE);
+        square.setOnAction(e -> {
+            log("Tool selected: Square");
+            currentTool = Tool.SQUARE;
+        });
+        rectangle.setOnAction(e -> {
+            log("Tool selected: Rectangle");
+            currentTool = Tool.RECTANGLE;
+        });
+        pentagon.setOnAction(e -> {
+            log("Tool selected: Pentagon");
+            currentTool = Tool.PENTAGON;
+        });
+        circle.setOnAction(e -> {
+            log("Tool selected: Circle");
+            currentTool = Tool.CIRCLE;
+        });
+        ellipse.setOnAction(e -> {
+            log("Tool selected: Ellipse");
+            currentTool = Tool.ELLIPSE;
+        });
+        triangle.setOnAction(e -> {
+            log("Tool selected: Triangle");
+            currentTool = Tool.TRIANGLE;
+        });
+        star.setOnAction(e -> {
+            log("Tool selected: Star");
+            currentTool = Tool.STAR;
+        });
+        /*
+        selectArea.setOnAction(e -> {
+            log("Tool selected: Copy/Paste");
+            currentTool = Tool.COPY_PASTE
+        });
+         */
+
+        starCustom.setOnAction(e -> {
+            log("Tool selected: Custom Star");
+            TextInputDialog dialog = new TextInputDialog("10");
+            dialog.setTitle("Star Points");
+            dialog.setHeaderText("Enter the number of points for the star:");
+            Optional<String> result = dialog.showAndWait();
+            result.ifPresent(points -> pointCount = Integer.parseInt(points));
+            currentTool = Tool.CUSTOMSTAR;
+        });
 
         polygon.setOnAction(e -> {
+            log("Tool selected: Polygon");
             TextInputDialog dialog = new TextInputDialog("10");
             dialog.setTitle("Polygon Sides");
             dialog.setHeaderText("Enter the number of sides for the polygon:");
@@ -161,6 +436,7 @@ public class Pain extends Application {
         });
 
         textPrompt.setOnAction(e -> {
+            log("Tool selected: Text Box");
             TextInputDialog dialog = new TextInputDialog("");
             dialog.setTitle("Text Input");
             dialog.setHeaderText("Enter the text to be displayed:");
@@ -171,9 +447,18 @@ public class Pain extends Application {
 
         // Help Menu
         Menu helpMenu = new Menu("Help");
-        MenuItem help = new MenuItem("Help");
-        MenuItem about = new MenuItem("About");
-        MenuItem javaPun = new MenuItem("Java Pun");
+        Label helpLabel = new Label("Help");
+        Tooltip helpTooltip = new Tooltip("Click to get help");
+        Tooltip.install(helpLabel, helpTooltip);
+        CustomMenuItem help = new CustomMenuItem(helpLabel);
+        Label aboutLabel = new Label("About");
+        Tooltip aboutTooltip = new Tooltip("Click for info about Pain(t)");
+        Tooltip.install(aboutLabel, aboutTooltip);
+        CustomMenuItem about = new CustomMenuItem(aboutLabel);
+        Label javaPunLabel = new Label("Java Pun");
+        Tooltip javaPunTooltip = new Tooltip("Click to get a pun about Java");
+        Tooltip.install(javaPunLabel, javaPunTooltip);
+        CustomMenuItem javaPun = new CustomMenuItem(javaPunLabel);
         helpMenu.getItems().addAll(help, about, javaPun);
 
         // Menu Retrieval
@@ -186,6 +471,8 @@ public class Pain extends Application {
         // Timer setup
         timerLabel = new Label("Autosave in: " + countdown + "s");
         timerButton = new ToggleButton("Show Autosave Timer");
+        Tooltip timerButtonTooltip = new Tooltip("Click to activate autosave timer countdown");
+        timerButton.setTooltip(timerButtonTooltip);
         VBox timerBox = new VBox(timerLabel, timerButton);
         root.setRight(timerBox);
         timerLabel.setVisible(false);
@@ -204,7 +491,11 @@ public class Pain extends Application {
         insertImage.setOnAction(e -> insertImage(primaryStage));
         save.setOnAction(e -> saveImage());
         saveAs.setOnAction(e -> saveImageAs(primaryStage));
+        rotate.setOnAction(e -> rotateScreen(primaryStage));
+        mirrorHorizontally.setOnAction(e -> mirrorHorizontally(gc, canvas));
+        mirrorVertically.setOnAction(e -> mirrorVertically(gc, canvas));
         clearCanvas.setOnAction(e -> clearCanvas(primaryStage));
+
 
         // Tools menu actions
         lineWidth.setOnAction(e -> showLineWidthDialog(primaryStage));
@@ -215,9 +506,9 @@ public class Pain extends Application {
         about.setOnAction(e -> showAboutDialog(primaryStage));
         javaPun.setOnAction(e -> showPunDialog(primaryStage));
 
-        /**
+        /*
          * The next section contains all the mouse interaction
-         * code including, clicking, dragging, and releasing
+         * code including hovering, clicking, dragging, and releasing
          */
 
         // Set up drawing events
@@ -225,6 +516,7 @@ public class Pain extends Application {
             saveCanvasState();
             startX = e.getX();
             startY = e.getY();
+            log("Mouse Pressed: X: " + startX + " Y: " + startY);
             selectedArea = false;
 
             if (isPasting) {
@@ -296,6 +588,9 @@ public class Pain extends Application {
                 case STAR:
                     drawStar(startX, startY, endX, endY);
                     break;
+                case CUSTOMSTAR:
+                    drawCustomStar(startX, startY, endX, endY, pointCount);
+                    break;
                 case POLYGON:
                     drawPolygon(startX, startY, endX, endY, sideCount);
                     break;
@@ -313,7 +608,7 @@ public class Pain extends Application {
         canvas.addEventHandler(MouseEvent.MOUSE_RELEASED, e -> {
             endX = e.getX();
             endY = e.getY();
-
+            log("Mouse Released: X: " + endX + " Y: " + endY);
             checkAndResizeCanvas(endX, endY); // Ensure canvas resizes when needed
 
             // Draw the final shape when mouse is released
@@ -335,35 +630,49 @@ public class Pain extends Application {
                     isSelecting = false;
                     break;
                 case LINE:
-                        gc.strokeLine(startX, startY, endX, endY);  // Draw final straight line
-                        gc.lineTo(endX, endY);  // Final free draw line
-                        gc.stroke();  // Finish the freehand drawing
-                    break;
+                    log("Line Drawn");
+                    gc.strokeLine(startX, startY, endX, endY);  // Draw final straight line
+                    gc.lineTo(endX, endY);  // Final free draw line
+                    gc.stroke();  // Finish the freehand drawing
+                break;
                 case SQUARE:
+                    log("Square Drawn");
                     drawSquare(startX, startY, endX, endY);
                     break;
                 case RECTANGLE:
+                    log("Rectangle Drawn");
                     drawRectangle(startX, startY, endX, endY);
                     break;
                 case PENTAGON:
+                    log("Pentagon Drawn");
                     drawPentagon(startX, startY, endX, endY);
                     break;
                 case CIRCLE:
+                    log("Circle Drawn");
                     drawCircle(startX, startY, endX, endY);
                     break;
                 case ELLIPSE:
+                    log("Ellipse Drawn");
                     drawEllipse(startX, startY, endX, endY);
                     break;
                 case TRIANGLE:
+                    log("Triangle Drawn");
                     drawTriangle(startX, startY, endX, endY);
                     break;
                 case STAR:
+                    log("Star Drawn");
                     drawStar(startX, startY, endX, endY);
                     break;
+                case CUSTOMSTAR:
+                    log(pointCount + "-pointed Star Drawn");
+                    drawCustomStar(startX, startY, endX, endY, pointCount);
+                    break;
                 case POLYGON:
+                    log(sideCount + "-sided Polygon Drawn");
                     drawPolygon(startX, startY, endX, endY, sideCount);
                     break;
                 case TEXTBOX:
+                    log("Text Drawn with Content: " + textInput);
                     drawText(startX, startY, textInput);
                     break;
                 default:
@@ -373,11 +682,12 @@ public class Pain extends Application {
             isSaved = false;  // Mark the drawing as unsaved
         });
 
-        /**
+        /*
          * This section handles ensuring that there is confirmation when
          * the user attempts to close their unsaved work
          */
         primaryStage.setOnCloseRequest(event -> {
+            log("Attempt to close paint...");
             if (!isSaved) {
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("Unsaved Changes");
@@ -391,13 +701,23 @@ public class Pain extends Application {
                 alert.showAndWait().ifPresent(response -> {
                     if (response == saveAndExit) {
                         saveImage();
+                        log("Closing Paint...");
+                        shutdownLogging();
                     } else if (response == cancel) {
                         event.consume();
+                        log("Canceled Closing");
+                    } else if (response == exitWithoutSaving) {
+                        log("Closing Paint...");
+                        if (autosaveTimer != null) {
+                            autosaveTimer.cancel();
+                        }
+                        shutdownLogging();
                     }
                 });
             }
-            if (autosaveTimer != null) {
-                autosaveTimer.cancel();
+            else {
+                shutdownLogging();
+                log("Project Saved. Exiting Paint...");
             }
         });
 
@@ -406,7 +726,7 @@ public class Pain extends Application {
         // Scene Initialization
         Scene scene = new Scene(root, 1600, 900);
 
-        /**
+        /*
          * This section controls keyboard shortcuts
          */
 
@@ -417,11 +737,11 @@ public class Pain extends Application {
                 undoAction();
             } else if (new KeyCodeCombination(KeyCode.Y, KeyCombination.CONTROL_DOWN).match(event)) {
                 redoAction();
-            } else if (new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN).match(event)) {
+            } /*else if (new KeyCodeCombination(KeyCode.C, KeyCombination.CONTROL_DOWN).match(event)) {
                 copyAction();
             } else if (new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN).match(event)) {
                 pasteAction();
-            }
+            }*/
         });
 
         primaryStage.setTitle("Pain");
@@ -431,10 +751,97 @@ public class Pain extends Application {
     }
 
     /**
+     * Rotates the canvas and gc
+     * @param owner
+     */
+    private void rotateScreen(Stage owner) {
+        log("Rotating Screen...");
+        // Snapshot the current canvas content before rotating
+        WritableImage canvasSnapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
+        canvas.snapshot(null, canvasSnapshot);
+
+        // Clear the canvas
+        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+
+        // Save the current GraphicsContext state
+        gc.save();
+
+        // Translate and rotate the canvas
+        gc.translate(canvas.getWidth() / 2, canvas.getHeight() / 2);
+        gc.rotate(90);
+        gc.translate(-canvas.getWidth() / 2, -canvas.getHeight() / 2);
+
+        // Redraw the snapshot of the canvas content after rotation
+        gc.drawImage(canvasSnapshot, 0, 0);
+
+        // Restore the GraphicsContext state
+        gc.restore();
+    }
+
+    /**
+     * Flips (mirrors) the canvas horizontally.
+     *
+     * @param gc     The GraphicsContext of the canvas.
+     * @param canvas The Canvas object to flip horizontally.
+     */
+    private void mirrorHorizontally(GraphicsContext gc, Canvas canvas) {
+        log("Mirroring Screen Horizontally...");
+        // Take a snapshot of the current canvas content
+        WritableImage canvasSnapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
+        canvas.snapshot(null, canvasSnapshot);
+
+        // Clear the canvas before flipping
+        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+
+        // Save the current state of the GraphicsContext
+        gc.save();
+
+        // Flip horizontally: scale X-axis by -1, Y-axis by 1
+        gc.translate(canvas.getWidth(), 0);  // Move the origin to the right edge
+        gc.scale(-1, 1);  // Flip horizontally
+
+        // Redraw the image on the flipped canvas
+        gc.drawImage(canvasSnapshot, 0, 0);
+
+        // Restore the original GraphicsContext state
+        gc.restore();
+    }
+
+    /**
+     * Flips (mirrors) the canvas vertically.
+     *
+     * @param gc     The GraphicsContext of the canvas.
+     * @param canvas The Canvas object to flip vertically.
+     */
+    private void mirrorVertically(GraphicsContext gc, Canvas canvas) {
+        log("Mirroring Screen Vertically...");
+        // Take a snapshot of the current canvas content
+        WritableImage canvasSnapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
+        canvas.snapshot(null, canvasSnapshot);
+
+        // Clear the canvas before flipping
+        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+
+        // Save the current state of the GraphicsContext
+        gc.save();
+
+        // Flip vertically: scale X-axis by 1, Y-axis by -1
+        gc.translate(0, canvas.getHeight());  // Move the origin to the bottom edge
+        gc.scale(1, -1);  // Flip vertically
+
+        // Redraw the image on the flipped canvas
+        gc.drawImage(canvasSnapshot, 0, 0);
+
+        // Restore the original GraphicsContext state
+        gc.restore();
+    }
+
+    /**
      * Image Insertion
      * @param stage
      */
     private void insertImage(Stage stage) {
+        log("Inserting Image...");
         FileChooser fileChooser = new FileChooser();
         fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Image Files", "*.png", "*.jpg", "*.jpeg", "*.bmp")
@@ -455,11 +862,12 @@ public class Pain extends Application {
                 currentFile = file;
 
                 isSaved = false;
-
+                log("Inserted Image: " + currentFile.getName());
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         }
+        else {log("Insert Image Canceled");}
     }
 
     /**
@@ -485,6 +893,8 @@ public class Pain extends Application {
             // Redraw the snapshot on the resized canvas
             gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight()); // Clear the canvas
             gc.drawImage(snapshot, 0, 0); // Redraw previous content
+
+            log("Resized Canvas to " + canvas.getWidth() + "x" + canvas.getHeight());
         }
     }
 
@@ -494,6 +904,7 @@ public class Pain extends Application {
      * @param owner
      */
     private void clearCanvas(Stage owner) {
+        log("Clearing Canvas...");
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.initOwner(owner);
         alert.setTitle("Clearing Canvas...");
@@ -505,13 +916,16 @@ public class Pain extends Application {
 
         alert.showAndWait().ifPresent(response -> {
             if (response == clearConfirm) {
+                log("Canvas Cleared");
                 gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
                 gc.setFill(Color.WHITE);
                 gc.fillRect(0,0,canvas.getWidth(),canvas.getHeight());
                 isSaved = false;
             }
+            else{log("Canvas Clear Canceled");}
         });
     }
+
 
     /**
      * This section handles the Save function
@@ -519,6 +933,7 @@ public class Pain extends Application {
     private void saveImage() {
         if (currentFile != null) {
             saveToFile(currentFile);
+            log("Saved to File " + currentFile);
         } else {
             saveImageAs(null);
         }
@@ -531,6 +946,7 @@ public class Pain extends Application {
      *      Note: not the same as the save function, though it is called
      */
     private void saveImageAs(Stage stage) {
+        log("Attempting new save...");
         FileChooser fileChooser = new FileChooser();
         fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("PNG Files", "*.png"),
@@ -548,6 +964,7 @@ public class Pain extends Application {
                     boolean confirmed = showFormatWarning(currentFormat, newFormat);
                     if (!confirmed) {
                         System.out.println("Save canceled due to format change.");
+                        log("Save canceled due to format change");
                         return;  // User canceled save
                     }
                 }
@@ -555,6 +972,7 @@ public class Pain extends Application {
             saveToFile(file);
             currentFile = file;
             isSaved = true;
+            log("Saved to new file " + currentFile);
         }
     }
 
@@ -610,6 +1028,7 @@ public class Pain extends Application {
         slider.valueProperty().addListener((obs, oldVal, newVal) -> gc.setLineWidth(newVal.doubleValue()));
 
         slider.valueProperty().addListener((obs, oldVal, newVal) -> {
+            log("Line Width Changed to " + newVal.doubleValue());
             gc.setLineWidth(newVal.doubleValue());
             widthLabel.setText("Current Width: " + String.format("%.2f", newVal.doubleValue()));
         });
@@ -634,7 +1053,10 @@ public class Pain extends Application {
         dialog.setTitle("Select Line Color");
 
         ColorPicker picker = new ColorPicker((Color) gc.getStroke());
-        picker.setOnAction(e -> gc.setStroke(picker.getValue()));
+        picker.setOnAction(e -> {
+            log("Color changed to " + picker.getValue());
+            gc.setStroke(picker.getValue());
+        });
 
         Scene scene = new Scene(picker, 300, 100);
         dialog.setScene(scene);
@@ -646,6 +1068,7 @@ public class Pain extends Application {
      */
     private void undoAction() {
         if (!undoStack.isEmpty()) {
+            log("Undid Last Action");
             // Save the current state to the redo stack before undoing
             WritableImage currentSnapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
             canvas.snapshot(null, currentSnapshot);
@@ -657,6 +1080,7 @@ public class Pain extends Application {
             gc.drawImage(lastImage, 0, 0);
             isSaved = false;
         }
+        else{log("Attempted to Undo Last Action");}
     }
 
     /**
@@ -664,6 +1088,7 @@ public class Pain extends Application {
      */
     private void copyAction() {
         if (selectedArea) {
+            log("Copied Area");
             // Assign the selected snapshot to copySnapshot
             copySnapshot = new WritableImage(selectSnapshot.getPixelReader(),
                     (int) selectSnapshot.getWidth(),
@@ -677,6 +1102,7 @@ public class Pain extends Application {
      */
     private void pasteAction() {
         if (copySnapshot != null) {
+            log("Pasted Area");
             isPasting = true;  // Activate pasting mode
             canvas.addEventHandler(MouseEvent.MOUSE_CLICKED, e -> {
                 if (isPasting) {
@@ -695,6 +1121,7 @@ public class Pain extends Application {
      */
     private void redoAction() {
         if (!redoStack.isEmpty()) {
+            log("Redid Last Action");
             // Save the current state to the undo stack before redoing
             WritableImage currentSnapshot = new WritableImage((int) canvas.getWidth(), (int) canvas.getHeight());
             canvas.snapshot(null, currentSnapshot);
@@ -706,6 +1133,7 @@ public class Pain extends Application {
             gc.drawImage(nextImage, 0, 0);
             isSaved = false;
         }
+        else{log("Attempted to Redo Last Action");}
     }
 
     /**
@@ -830,6 +1258,35 @@ public class Pain extends Application {
      * @param startY
      * @param endX
      * @param endY
+     * @param points
+     */
+    private void drawCustomStar(double startX, double startY, double endX, double endY, int points) {
+        if (points < 4) return;
+        double radius = Math.min(Math.abs(endX - startX), Math.abs(endY - startY)) / 2;
+        double centerX = (startX + endX) / 2;
+        double centerY = (startY + endY) / 2;
+
+        double[] xPoints = new double[points * 2];
+        double[] yPoints = new double[points * 2];
+
+        for (int i = 0; i < points * 2; i++) {
+            double angle = i * (Math.PI/points);
+            double length = (i % 2 == 0) ? radius : radius / 2;
+            xPoints[i] = centerX + length * Math.cos(angle);
+            yPoints[i] = centerY - length * Math.sin(angle);
+        }
+
+        gc.strokePolygon(xPoints, yPoints, points * 2);
+    }
+
+    /**
+     * This section handles the construction of a polygon
+     * when the user interacts with the polygon button
+     * and chooses how many sides they want it to have
+     * @param startX
+     * @param startY
+     * @param endX
+     * @param endY
      * @param sides
      */
     private void drawPolygon(double startX, double startY, double endX, double endY, int sides) {
@@ -879,8 +1336,8 @@ public class Pain extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle("About");
 
-        Label aboutLabel = new Label("Pain Application\nHave mercy on us Rosasco\nWe beg before you.");
-        Scene scene = new Scene(aboutLabel, 300, 100);
+        Label aboutInfoLabel = new Label(" Pain Application\n Have mercy on us Rosasco\n We beg before you\n (Should I tell you that the schedule on this is painful?\n Maybe I'll just add it at the end of the paint log?)");
+        Scene scene = new Scene(aboutInfoLabel, 300, 100);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -895,8 +1352,8 @@ public class Pain extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle("Pun");
 
-        Label aboutLabel = new Label("Why do Java Developers wear glasses?\nThey don't see sharp!");
-        Scene scene = new Scene(aboutLabel, 300, 100);
+        Label punInfoLabel = new Label(" Why do Java Developers wear glasses?\n They don't see sharp!");
+        Scene scene = new Scene(punInfoLabel, 225, 50);
         dialog.setScene(scene);
         dialog.show();
     }
@@ -911,7 +1368,7 @@ public class Pain extends Application {
         dialog.initModality(Modality.APPLICATION_MODAL);
         dialog.setTitle("Help");
 
-        Label helpLabel = new Label("Dude it's so simple. Add an image (or don't)\n Draw if you want: you can change color and width\nDon't forget to save STUPID");
+        Label helpLabel = new Label(" Dude it's so simple. Add an image (or don't)\n Draw if you want: you can change color and width\n (also works for shapes)\n Don't forget to save Lukasz\n (this includes logs after running obviously)");
         Scene scene = new Scene(helpLabel, 300, 100);
         dialog.setScene(scene);
         dialog.show();
@@ -955,6 +1412,51 @@ public class Pain extends Application {
                 });
             }
         }, 1000, 1000);
+    }
+
+    public static void log(String message) {
+        try {
+            logQueue.put(message);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.log(Level.SEVERE, "Failed to log message", e);
+        }
+    }
+
+    private static class LoggerTask implements Runnable {
+        @Override
+        public void run() {
+            try {
+                while(!Thread.currentThread().isInterrupted()) {
+                    String logMessage = logQueue.take();
+                    logger.log(Level.INFO, logMessage);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.log(Level.SEVERE, "Logging thread interrupted, shutting down");
+            }
+        }
+    }
+
+    public static void shutdownLogging() {
+        boolean shutdownSuccess = true;
+        if (loggingThread != null && loggingThread.isAlive()) {
+            loggingThread.interrupt();
+            try {
+                loggingThread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.log(Level.SEVERE, "Logger shutdown interrupted", e);
+                shutdownSuccess = false;
+            }
+        }
+        for (java.util.logging.Handler handler : logger.getHandlers()) {
+            handler.flush();  // Flush any remaining logs
+            handler.close();  // Close the handler to release resources
+        }
+        if(shutdownSuccess) {
+            logger.log(Level.INFO, "Logger shutdown");
+        }
     }
 
     public static void main(String[] args) {
