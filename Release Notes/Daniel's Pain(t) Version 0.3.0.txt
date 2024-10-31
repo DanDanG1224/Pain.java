@@ -1,4 +1,4 @@
-Daniel's Pain(t) Version 0.3.0 -  09/06/2024
+Daniel's Pain(t) Version 0.3.0 -  09/15/2024
 
 New features:
   

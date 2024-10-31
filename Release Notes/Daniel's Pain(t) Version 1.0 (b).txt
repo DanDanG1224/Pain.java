@@ -1,0 +1,67 @@
+Daniel's Pain(t) Version 1.0 (b) -  10/29/2024
+
+Features:
+  * Menu
+
+  * Add image function
+
+  * Support for jpg, png, jpeg
+
+  * Save function
+
+  * Save as function
+
+  * Support for jpg, png, jpeg, bmp
+
+  * Ability to draw a line (including straight line function)
+
+  * Ability to change width (pixel count included) and color of said line and shapes
+
+  * Help menu with help and about sections
+
+  * Image size management
+
+  * Label for colors
+  
+  * Dashed function for BOTH lines and shapes
+  
+  * Ability to add shapes (square, circle, rectangle, square, ellipse, triangle, pentagon, star, custom polygon, and custom star)
+  
+  * Keyboard Shortcuts!!! (Ctrl+S: save, Ctrl+Z: undo, Ctrl+Y: redo)
+  
+  * Auto canvas resize on right and bottom sides of canvas
+
+  * Line function updated to include straight line option
+
+  * Aware Save
+
+  * Java Pun
+  
+  * Eraser
+
+  * Clear Canvas (with safety net)
+
+  * Blank starting image
+  
+  * Add Text
+
+  * Github
+
+  * 3 Unit Tests
+
+  * Autosave function with choice for countdown visibility AND reset on user save
+
+  * JavaDoc Commenting throughout
+
+  * Saving in alternate format w/ warnings
+
+  * Canvas Rotation
+
+  * Drawing Icons
+
+  * Tooltips for buttons
+
+  * Threaded file events
+
+GitHub:
+  * https://github.com/DanDanG1224/Pain.java

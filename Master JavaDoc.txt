@@ -1,0 +1,188 @@
+/**
+ * Logs a message by adding it to the logging queue.
+ *
+ * @param message The message to log.
+ */
+public static void log(String message);
+
+/**
+ * Shuts down the logging system, flushing and closing all log handlers, 
+ * and safely terminating the logging thread.
+ */
+public static void shutdownLogging();
+
+/**
+ * Handles the actual writing of the image to the file in the specified format.
+ *
+ * @param file The file to save the image data to.
+ */
+private void saveToFile(File file);
+
+/**
+ * Retrieves the file extension based on the file's name.
+ *
+ * @param fileName The name of the file.
+ * @return The file extension, or null if no valid extension exists.
+ */
+private String getFileExtension(String fileName);
+
+/**
+ * Displays a dialog for adjusting the line width.
+ *
+ * @param owner The owner stage for the dialog window.
+ */
+private void showLineWidthDialog(Stage owner);
+
+/**
+ * Displays the color picker dialog for selecting line or shape colors.
+ *
+ * @param owner The owner stage for the dialog window.
+ */
+private void showColorPickerDialog(Stage owner);
+
+/**
+ * Handles the undo action by restoring the last saved state from the undo stack.
+ */
+private void undoAction();
+
+/**
+ * Handles the redo action by restoring the most recent undone state from the redo stack.
+ */
+private void redoAction();
+
+/**
+ * Saves the current state of the canvas to the undo stack.
+ * Used to support undo/redo functionality.
+ */
+private void saveCanvasState();
+
+/**
+ * Handles the copy action for selected areas, capturing the selected 
+ * snapshot for later pasting.
+ */
+private void copyAction();
+
+/**
+ * Handles the paste action, allowing the copied selection to be pasted 
+ * on the canvas at a specified location.
+ */
+private void pasteAction();
+
+/**
+ * Draws a square on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawSquare(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a rectangle on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawRectangle(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a pentagon on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawPentagon(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a circle on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawCircle(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws an ellipse on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawEllipse(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a triangle on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawTriangle(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a star on the canvas based on the start and end coordinates provided.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ */
+private void drawStar(double startX, double startY, double endX, double endY);
+
+/**
+ * Draws a custom star on the canvas with a specified number of points.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ * @param points The number of points in the custom star.
+ */
+private void drawCustomStar(double startX, double startY, double endX, double endY, int points);
+
+/**
+ * Draws a polygon on the canvas with a specified number of sides.
+ *
+ * @param startX The x-coordinate for the starting point.
+ * @param startY The y-coordinate for the starting point.
+ * @param endX   The x-coordinate for the ending point.
+ * @param endY   The y-coordinate for the ending point.
+ * @param sides  The number of sides for the polygon.
+ */
+private void drawPolygon(double startX, double startY, double endX, double endY, int sides);
+
+/**
+ * Draws a text box on the canvas at a specified location with the given content.
+ *
+ * @param startX     The x-coordinate for the text box.
+ * @param startY     The y-coordinate for the text box.
+ * @param textDisplay The text content to be displayed.
+ */
+private void drawText(double startX, double startY, String textDisplay);
+
+/**
+ * Sets up and starts the autosave countdown timer, performing autosave
+ * operations at defined intervals.
+ */
+private void setupCountdown();
+
+/**
+ * Class responsible for handling the logging queue and writing log messages
+ * to the logger as they arrive.
+ */
+private static class LoggerTask implements Runnable {
+    /**
+     * Continuously takes messages from the log queue and writes them to the logger.
+     */
+    @Override
+    public void run();
+}
